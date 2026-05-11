@@ -1,0 +1,47 @@
+hec-dss-migrator
+Copyright 2026 US Army Corps of Engineers, Hydrologic Engineering Center
+
+This product includes software developed by the US Army Corps of Engineers,
+Hydrologic Engineering Center (https://www.hec.usace.army.mil/).
+
+Works of the United States federal government are not subject to copyright
+protection in the United States under 17 U.S.C. § 105. This project is
+made available under the Apache License, Version 2.0 for the convenience
+of downstream users who may redistribute it in jurisdictions where
+copyright applies, and to make explicit the patent grant and attribution
+requirements expected of contributors and redistributors.
+
+----------------------------------------------------------------------
+
+This product bundles the following third-party components, redistributed
+inside the published jar. Each remains the property of its original author
+and is governed by the license noted below.
+
+  hec-monolith
+    Source:  https://www.hec.usace.army.mil/nexus/repository/maven-public
+    Coords:  mil.army.usace.hec:hec-monolith
+    License: Public-domain US Government work (17 U.S.C. § 105),
+             redistributed under Apache License 2.0.
+
+  javaHeclib (native libraries)
+    Source:  https://www.hec.usace.army.mil/nexus/repository/maven-public
+    Coords:  mil.army.usace.hec:javaHeclib (-win-x86_64, -linux-x86_64,
+             -macOS-x86_64-full classifiers)
+    License: Public-domain US Government work (17 U.S.C. § 105).
+
+  hec-nucleus-metadata, hec-nucleus-data
+    Source:  https://www.hec.usace.army.mil/nexus/repository/maven-public
+    Coords:  mil.army.usace.hec:hec-nucleus-metadata,
+             mil.army.usace.hec:hec-nucleus-data
+    License: Public-domain US Government work (17 U.S.C. § 105).
+
+  lookup (rma.util.lookup)
+    Source:  https://www.hec.usace.army.mil/nexus/repository/maven-public
+    Coords:  mil.army.usace.hec:lookup
+    License: Public-domain US Government work (17 U.S.C. § 105).
+
+  Flogger
+    Source:  https://github.com/google/flogger
+    Coords:  com.google.flogger:flogger, com.google.flogger:flogger-system-backend
+    License: Apache License, Version 2.0
+    Copyright (C) The Flogger Authors.

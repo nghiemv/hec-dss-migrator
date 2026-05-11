@@ -1,0 +1,11 @@
+# Copy to gradle.properties and fill in if you intend to publish.
+# gradle.properties is gitignored.
+
+# Sonatype OSSRH / Maven Central
+# sonatypeUser=
+# sonatypePassword=
+
+# GPG signing for Maven Central releases
+# signing.keyId=
+# signing.password=
+# signing.secretKeyRingFile=

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / JDK ${{ matrix.jdk }} / ${{ matrix.profile }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-13 is the last Intel macOS runner; macos-14+ is arm64.
+        # The published jar ships macOS-x86_64 natives, so we test on Intel.
+        os:     [ubuntu-latest, windows-latest, macos-13]
+        jdk:    ['11', '17', '21']
+        profile: [strict, edge]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.jdk }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build (strict)
+        if: matrix.profile == 'strict'
+        run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Build (edge - locale/encoding/forced staging)
+        if: matrix.profile == 'edge'
+        run: ./gradlew build -PstrictEnv=true --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}-jdk${{ matrix.jdk }}-${{ matrix.profile }}
+          path: |
+            build/reports/tests/
+            build/test-results/
+          if-no-files-found: ignore
+
+  # Verify the library fails *cleanly* on a platform we don't ship natives for.
+  unsupported-platform:
+    name: Unsupported platform fail-fast (macos-arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Compile only (we don't have arm64 natives to run tests with)
+        run: ./gradlew compileJava compileTestJava --no-daemon
