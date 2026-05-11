@@ -1,7 +1,7 @@
 # hec-dss-migrator
 
-[![CI](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/actions/workflows/ci.yml/badge.svg)](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
+[![Build](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/actions/workflows/build.yml/badge.svg)](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/license-CDDL%2BGPLv2%20with%20Classpath%20Exception-blue.svg)](LICENSE.md)
 
 Self-contained Java library for migrating HEC-DSS files from version 6 to version 7
 inside a host JVM that may already have a different `javaHeclib` version loaded.
@@ -178,20 +178,27 @@ OSGi bundle, shaded host jar, or exploded classpath).
 On unsupported platforms the library fails fast with a clear `DssMigrationException`
 naming the platform rather than an opaque `UnsatisfiedLinkError`.
 
+## Releasing
+
+Releases are published to Maven Central via the
+[Central Portal API](https://central.sonatype.com) by pushing a SemVer tag
+(`X.Y.Z`). The [`tagged-release`](.github/workflows/tagged-release.yml) workflow
+calls [`release.yml`](.github/workflows/release.yml), which invokes the
+`io.github.opendcs.maven.maven-central-upload` plugin with the version derived
+from the tag (`com.palantir.git-version`). Branch builds publish a
+`99.<branch>-SNAPSHOT` artifact only when manually triggered.
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions are accepted under the
-[DCO](https://developercertificate.org/) sign-off.
+See [CONTRIBUTING.md](CONTRIBUTING.md). [MAINTAINERS.MD](MAINTAINERS.MD) lists
+current project maintainers.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for how to report vulnerabilities.
+See [SECURITY.md](SECURITY.md) for how to report vulnerabilities. Release
+artifacts are signed; verify with the keys in [KEYS](KEYS).
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-Works of the United States federal government are not subject to copyright protection
-in the United States under 17 U.S.C. § 105. The Apache 2.0 license applies in
-jurisdictions where copyright does apply and provides explicit patent and attribution
-terms for redistribution.
+CDDL + GPLv2 with Classpath Exception. See [LICENSE.md](LICENSE.md),
+[INTENT.md](INTENT.md), and [NOTICE](NOTICE).

@@ -2,13 +2,23 @@ plugins {
     id 'java-library'
     id 'maven-publish'
     id 'signing'
+    id 'com.palantir.git-version'  version '3.2.0'
+    id 'io.github.opendcs.maven.maven-central-upload' version '0.1.1'
 }
 
-group = 'mil.army.usace.hec'
-version = '0.1.0'
+// --- Version derived from git: tag => '1.2.3', branch => '99.<branch>-SNAPSHOT'.
+// Override with -PversionOverride=... (the release workflow does this).
+def versionLabel = { gitInfo ->
+    def branch = gitInfo.branchName
+    def tag    = gitInfo.lastTag
+    branch == null ? tag : 99 + '.' + branch.replace('/', '-') + '-SNAPSHOT'
+}
+
+group       = 'mil.army.usace.hec'
+version     = project.findProperty('versionOverride') ?: versionLabel(versionDetails())
 description = 'Self-contained library for migrating HEC-DSS files from v6 to v7 inside a host JVM that may already have a different javaHeclib version loaded.'
 
-// --- Versions (kept inline; no external version catalog for OSS build) ---
+// --- Pinned dependency versions ---
 ext {
     hecMonolithVersion = '3.+'
     hecNucleusVersion  = '4.9.0'
@@ -31,6 +41,7 @@ java {
 
 compileJava {
     options.release = 11
+    options.compilerArgs << '-parameters'
 }
 
 javadoc {
@@ -248,41 +259,44 @@ jar {
 }
 
 // ---------------------------------------------------------------------------
-// Publishing — Maven Central via Sonatype OSSRH.
-// Credentials are read from gradle.properties (gitignored). See
-// gradle.properties.template for the keys to set.
+// Publishing — Maven Central via the Central Portal API.
+// Local install: ./gradlew publishToMavenLocal
+// Central publish (CI only): ./gradlew publishAllToNewMavenCentralApi \
+//     -Psign=true -PsigningKey=... -PsigningKeyPassword=... \
+//     -PcentralApiUsername=... -PcentralApiPassword=...
 // ---------------------------------------------------------------------------
 
 publishing {
     publications {
-        mavenJava(MavenPublication) {
+        maven(MavenPublication) {
             artifactId = 'hec-dss-migrator'
             from components.java
 
             pom {
-                name        = 'HEC DSS Migrator'
-                description = project.description
-                url         = 'https://github.com/HydrologicEngineeringCenter/hec-dss-migrator'
+                name          = 'HEC DSS Migrator'
+                description   = project.description
+                url           = 'https://github.com/HydrologicEngineeringCenter/hec-dss-migrator'
                 inceptionYear = '2026'
 
                 licenses {
                     license {
-                        name         = 'The Apache Software License, Version 2.0'
-                        url          = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
-                        distribution = 'repo'
+                        name = 'CDDL + GPLv2 with Classpath Exception'
+                        url  = 'http://www.netbeans.org/cddl-gplv2.html'
                     }
                 }
 
                 developers {
                     developer {
-                        organization     = 'US Army Corps of Engineers - Hydrologic Engineering Center'
-                        organizationUrl  = 'https://www.hec.usace.army.mil/'
+                        id              = 'hec'
+                        name            = 'Hydrologic Engineering Center'
+                        organization    = 'US Army Corps of Engineers - Hydrologic Engineering Center'
+                        organizationUrl = 'https://www.hec.usace.army.mil/'
                     }
                 }
 
                 scm {
                     connection          = 'scm:git:https://github.com/HydrologicEngineeringCenter/hec-dss-migrator.git'
-                    developerConnection = 'scm:git:ssh://git@github.com/HydrologicEngineeringCenter/hec-dss-migrator.git'
+                    developerConnection = 'git@github.com:HydrologicEngineeringCenter/hec-dss-migrator.git'
                     url                 = 'https://github.com/HydrologicEngineeringCenter/hec-dss-migrator'
                 }
 
@@ -293,25 +307,27 @@ publishing {
             }
         }
     }
+
     repositories {
+        mavenLocal()
         maven {
-            name = 'sonatype'
-            def releasesUrl  = 'https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/'
-            def snapshotsUrl = 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
-            url = version.toString().endsWith('SNAPSHOT') ? snapshotsUrl : releasesUrl
+            name = 'mavenCentralApi'
+            url  = 'https://central.sonatype.com'
             credentials {
-                username = providers.gradleProperty('sonatypeUser').getOrElse('')
-                password = providers.gradleProperty('sonatypePassword').getOrElse('')
+                username = project.findProperty('centralApiUsername')
+                password = project.findProperty('centralApiPassword')
             }
         }
     }
 }
 
-signing {
-    // Only sign when actually publishing a release; skip for local installs and snapshots.
-    required = {
-        gradle.taskGraph.hasTask('publishMavenJavaPublicationToSonatypeRepository') &&
-                !version.toString().endsWith('SNAPSHOT')
+ext.shouldSign = (project.findProperty('sign') ?: 'false') == 'true'
+
+if (shouldSign) {
+    signing {
+        def signingKey      = project.getProperty('signingKey').trim().replace('\n', '')
+        def signingPassword = project.getProperty('signingKeyPassword')
+        useInMemoryPgpKeys(signingKey, signingPassword)
+        sign publishing.publications
     }
-    sign publishing.publications.mavenJava
 }

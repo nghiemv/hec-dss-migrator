@@ -11,4 +11,3 @@
 - [ ] Tests cover the change (regression test for bug fixes).
 - [ ] `./gradlew build` passes locally.
 - [ ] Public API changes are documented in the README or Javadoc.
-- [ ] Commits are signed off (DCO).

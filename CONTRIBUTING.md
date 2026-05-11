@@ -1,26 +1,18 @@
 # Contributing to hec-dss-migrator
 
 Thanks for your interest in contributing. This project is maintained by the
-US Army Corps of Engineers, Hydrologic Engineering Center (HEC).
+US Army Corps of Engineers, Hydrologic Engineering Center (HEC), and is part
+of HEC's public open-source portfolio under the CDDL + GPLv2 with Classpath
+Exception license. See [INTENT.md](INTENT.md) for the federal-employee
+licensing context.
 
 ## Ground rules
 
 - Be respectful — see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 - Discuss large changes in an issue first. Small fixes, doc improvements, and
   test additions can go straight to a pull request.
-- All commits must be signed off under the
-  [Developer Certificate of Origin](https://developercertificate.org/) (DCO).
-  Add `-s` to your `git commit` command, or paste the trailer manually:
-
-  ```
-  Signed-off-by: Your Name <your.email@example.com>
-  ```
-
-  By signing off you certify that you have the right to submit the contribution
-  under the project's license. Government-affiliated contributors should sign
-  off with the email address associated with their official capacity.
-
-- We do not require a CLA.
+- By submitting a contribution you agree that it is offered under the project
+  license recorded in [LICENSE.md](LICENSE.md). No CLA is required.
 
 ## Development setup
 
@@ -61,7 +53,6 @@ Strict-mode tests (long paths, non-ASCII cache dirs, alternate locale/encoding):
 - [ ] `./gradlew build` passes locally.
 - [ ] CI is green on all three platforms (Windows, Linux, macOS).
 - [ ] Public API changes are documented in the README or Javadoc.
-- [ ] Commits are signed off.
 
 ## Reporting bugs
 
