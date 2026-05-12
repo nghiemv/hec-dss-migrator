@@ -1,8 +1,7 @@
 package mil.army.usace.hec.dss.migrator;
 
-import java.nio.file.Files;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.logging.Logger;
 
 /**
@@ -126,7 +125,13 @@ public class Dss7GridFixer {
                 return MigrationResult.FAILED;
             }
 
-            Files.move(v7Temp, pathToFile, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                MigratorPaths.atomicMoveOrReplace(v7Temp, pathToFile);
+            } catch (IOException e) {
+                throw new DssMigrationException(
+                        "Repair succeeded but move-back failed for: " + pathToFile
+                                + " — staged result preserved at: " + v7Temp, e);
+            }
             return MigrationResult.MIGRATED;
         });
     }

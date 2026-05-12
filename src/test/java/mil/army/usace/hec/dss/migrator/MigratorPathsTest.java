@@ -214,4 +214,26 @@ class MigratorPathsTest {
         assertTrue(normalized.isAbsolute());
         assertEquals(missing.toAbsolutePath().normalize(), normalized);
     }
+
+    @Test
+    void atomicMoveOrReplaceMovesSourceOverDestination(@TempDir Path tmp) throws IOException {
+        Path src = Files.writeString(tmp.resolve("src.dss"), "new");
+        Path dst = Files.writeString(tmp.resolve("dst.dss"), "old");
+
+        MigratorPaths.atomicMoveOrReplace(src, dst);
+
+        assertFalse(Files.exists(src));
+        assertEquals("new", Files.readString(dst));
+    }
+
+    @Test
+    void atomicMoveOrReplaceCreatesDestinationWhenAbsent(@TempDir Path tmp) throws IOException {
+        Path src = Files.writeString(tmp.resolve("src.dss"), "payload");
+        Path dst = tmp.resolve("dst.dss");
+
+        MigratorPaths.atomicMoveOrReplace(src, dst);
+
+        assertFalse(Files.exists(src));
+        assertEquals("payload", Files.readString(dst));
+    }
 }

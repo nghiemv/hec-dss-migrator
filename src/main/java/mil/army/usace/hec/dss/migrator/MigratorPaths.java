@@ -1,6 +1,7 @@
 package mil.army.usace.hec.dss.migrator;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -140,6 +141,20 @@ final class MigratorPaths {
         try { Files.deleteIfExists(p); } catch (IOException ignore) {}
     }
 
+    /**
+     * Moves {@code src} over {@code dst}, atomically when the platform supports it.
+     * Falls back to a non-atomic replace when {@code ATOMIC_MOVE} isn't supported —
+     * typically cross-filesystem moves. Any other I/O failure propagates so the
+     * caller can preserve {@code src} and report it to the user.
+     */
+    static void atomicMoveOrReplace(Path src, Path dst) throws IOException {
+        try {
+            Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     /** True iff the path is long enough that heclib's C-runtime I/O may reject it. */
     static boolean needsStaging(Path original) {
         if (Boolean.getBoolean(FORCE_STAGING_PROPERTY)) return true;
@@ -193,7 +208,7 @@ final class MigratorPaths {
             MigrationResult result = op.apply(stagePath);
             if (result == MigrationResult.MIGRATED) {
                 try {
-                    Files.move(stagePath, original, StandardCopyOption.REPLACE_EXISTING);
+                    atomicMoveOrReplace(stagePath, original);
                 } catch (IOException e) {
                     preserveStage = true;
                     throw new DssMigrationException(
