@@ -47,7 +47,7 @@ jobs:
         run: ./gradlew build -PstrictEnv=true --no-daemon
 
       - name: Publish test report
-        uses: mikepenz/action-junit-report@v5
+        uses: mikepenz/action-junit-report@v6
         if: always()
         with:
           annotate_only: true
