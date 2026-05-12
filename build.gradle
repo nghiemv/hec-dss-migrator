@@ -39,7 +39,7 @@ configurations.all {
 // ---------------------------------------------------------------------------
 
 ext {
-    hecMonolithVersion = '3.3.28'
+    hecMonolithVersion = '7.0.8'
     hecNucleusVersion  = '4.9.0'
     lookupVersion      = '2.0'
     floggerVersion     = '0.7.4'
