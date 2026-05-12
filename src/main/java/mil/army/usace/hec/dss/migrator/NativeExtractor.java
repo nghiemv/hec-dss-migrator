@@ -73,11 +73,7 @@ final class NativeExtractor {
         List<byte[]> isolatedJarBytes = new ArrayList<>(expectedJars.size());
         for (Map.Entry<String, String> e : expectedJars.entrySet()) {
             byte[] bytes = readResource(e.getKey());
-            String hash = sha256(bytes);
-            if (!hash.equals(e.getValue())) {
-                throw new IOException("Corrupted isolated jar: " + e.getKey()
-                        + " (expected " + e.getValue() + ", got " + hash + ")");
-            }
+            verifyHash(e.getValue(), sha256(bytes), "isolated jar", e.getKey());
             isolatedJarBytes.add(bytes);
         }
         Path stagingDir = leaf.resolve("staging");
@@ -152,9 +148,7 @@ final class NativeExtractor {
     }
 
     private static byte[] readResource(String resourceKey) throws IOException {
-        String path = RESOURCE_ROOT + "/" + resourceKey;
-        try (InputStream is = NativeExtractor.class.getClassLoader().getResourceAsStream(path)) {
-            if (is == null) throw new IOException("Resource not found: " + path);
+        try (InputStream is = openResource(RESOURCE_ROOT + "/" + resourceKey)) {
             return is.readAllBytes();
         }
     }
@@ -163,14 +157,9 @@ final class NativeExtractor {
             throws IOException {
         String path = RESOURCE_ROOT + "/" + resourceKey;
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp-" + MigratorPaths.uniqueSuffix());
-        try (InputStream is = NativeExtractor.class.getClassLoader().getResourceAsStream(path)) {
-            if (is == null) throw new IOException("Resource not found: " + path);
+        try (InputStream is = openResource(path)) {
             Files.copy(is, tmp, StandardCopyOption.REPLACE_EXISTING);
-            String actual = sha256(tmp);
-            if (!actual.equals(expectedHash)) {
-                throw new IOException("Corrupted native: " + path
-                        + " (expected " + expectedHash + ", got " + actual + ")");
-            }
+            verifyHash(expectedHash, sha256(tmp), "native", path);
             makeExecutableIfNative(tmp);
             try {
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -180,6 +169,20 @@ final class NativeExtractor {
             }
         } finally {
             MigratorPaths.deleteQuietly(tmp);
+        }
+    }
+
+    private static InputStream openResource(String fullPath) throws IOException {
+        InputStream is = NativeExtractor.class.getClassLoader().getResourceAsStream(fullPath);
+        if (is == null) throw new IOException("Resource not found: " + fullPath);
+        return is;
+    }
+
+    private static void verifyHash(String expected, String actual, String kind, String identifier)
+            throws IOException {
+        if (!actual.equals(expected)) {
+            throw new IOException("Corrupted " + kind + ": " + identifier
+                    + " (expected " + expected + ", got " + actual + ")");
         }
     }
 

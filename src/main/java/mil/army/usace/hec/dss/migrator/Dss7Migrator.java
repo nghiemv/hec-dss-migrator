@@ -106,8 +106,11 @@ public class Dss7Migrator {
         h.closeDSSFile.invoke(utilities);
         Files.delete(pathToFile);
         Object manager = h.managerCtor.newInstance(pathToFile.toString());
-        h.managerOpen.invoke(manager);
-        h.managerClose.invoke(manager);
+        try {
+            h.managerOpen.invoke(manager);
+        } finally {
+            try { h.managerClose.invoke(manager); } catch (Exception ignore) {}
+        }
         return MigrationResult.MIGRATED;
     }
 
