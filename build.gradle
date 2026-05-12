@@ -42,7 +42,7 @@ ext {
     hecMonolithVersion = '3.3.28'
     hecNucleusVersion  = '4.9.0'
     lookupVersion      = '2.0'
-    floggerVersion     = '0.7.4'
+    floggerVersion     = '0.9'
 
     embeddedHeclibVersion = '7-IU-0'
     clientHeclibVersion   = '7-IU-16'
