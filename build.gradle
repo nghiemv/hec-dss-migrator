@@ -1,51 +1,19 @@
 plugins {
     id 'java-library'
-    id 'maven-publish'
-    id 'signing'
-    id 'com.palantir.git-version'  version '3.2.0'
-    id 'io.github.opendcs.maven.maven-central-upload' version '0.1.1'
 }
 
-// --- Version derived from git: tag => '1.2.3', branch => '99.<branch>-SNAPSHOT'.
-// Override with -PversionOverride=... (the release workflow does this).
-def versionLabel = { gitInfo ->
-    def branch = gitInfo.branchName
-    def tag    = gitInfo.lastTag
-    branch == null ? tag : 99 + '.' + branch.replace('/', '-') + '-SNAPSHOT'
-}
-
-group       = 'mil.army.usace.hec'
-version     = project.findProperty('versionOverride') ?: versionLabel(versionDetails())
-description = 'Self-contained library for migrating HEC-DSS files from v6 to v7 inside a host JVM that may already have a different javaHeclib version loaded.'
-
-// --- Pinned dependency versions ---
-ext {
-    hecMonolithVersion = '3.+'
-    hecNucleusVersion  = '4.9.0'
-    lookupVersion      = '2.0'
-    floggerVersion     = '0.7.4'
-
-    embeddedHeclibVersion = '7-IU-0'    // shipped inside the published jar
-    clientHeclibVersion   = '7-IU-16'   // used only by isolation tests
-
-    junitVersion = '5.9.3'
-}
+group   = 'mil.army.usace.hec'
+version = project.findProperty('versionOverride') ?: '0.1.0'
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(11)
     }
     withSourcesJar()
-    withJavadocJar()
 }
 
 compileJava {
     options.release = 11
-    options.compilerArgs << '-parameters'
-}
-
-javadoc {
-    options.addBooleanOption('Xdoclint:none', true)
 }
 
 repositories {
@@ -60,32 +28,42 @@ repositories {
 }
 
 // ---------------------------------------------------------------------------
+// Dep versions
+// ---------------------------------------------------------------------------
+
+ext {
+    hecMonolithVersion = '3.+'
+    hecNucleusVersion  = '4.9.0'
+    lookupVersion      = '2.0'
+    floggerVersion     = '0.7.4'
+
+    embeddedHeclibVersion = '7-IU-0'
+    clientHeclibVersion   = '7-IU-16'
+
+    junitVersion = '5.9.3'
+}
+
+// ---------------------------------------------------------------------------
 // Custom configurations
 // ---------------------------------------------------------------------------
 
 configurations {
-    // Jars embedded as resources inside the published jar. Not transitive
-    // and not consumable by downstream — this is purely a packaging input.
     embed {
         canBeConsumed = false
         canBeResolved = true
         transitive    = false
     }
 
-    // Platform-specific javaHeclib natives shipped INSIDE the published jar.
     windows_x64 { canBeConsumed = false; canBeResolved = true }
     linux_x64   { canBeConsumed = false; canBeResolved = true }
     macOS_x64   { canBeConsumed = false; canBeResolved = true }
 
-    // Client-side javaHeclib natives loaded into the *outer* JVM during
-    // isolation tests, to prove the embedded natives are sandboxed.
     clientNatives_windows_x64 { canBeConsumed = false; canBeResolved = true }
     clientNatives_linux_x64   { canBeConsumed = false; canBeResolved = true }
     clientNatives_macOS_x64   { canBeConsumed = false; canBeResolved = true }
 }
 
 dependencies {
-    // Slim conversion-path deps embedded as resources
     embed("mil.army.usace.hec:hec-monolith:$hecMonolithVersion")
     embed("com.google.flogger:flogger:$floggerVersion")
     embed("com.google.flogger:flogger-system-backend:$floggerVersion")
@@ -93,27 +71,22 @@ dependencies {
     embed("mil.army.usace.hec:hec-nucleus-data:$hecNucleusVersion")
     embed("mil.army.usace.hec:lookup:$lookupVersion")
 
-    // javaHeclib natives shipped inside the published jar
     windows_x64("mil.army.usace.hec:javaHeclib:$embeddedHeclibVersion-win-x86_64@zip")
     linux_x64  ("mil.army.usace.hec:javaHeclib:$embeddedHeclibVersion-linux-x86_64@tar.gz")
     macOS_x64  ("mil.army.usace.hec:javaHeclib:$embeddedHeclibVersion-macOS-x86_64-full@zip")
 
-    // Test-only: outer-JVM hec-monolith + native version for isolation tests
-    testImplementation("mil.army.usace.hec:hec-monolith:$hecMonolithVersion") {
-        transitive = false
-    }
+    testImplementation("mil.army.usace.hec:hec-monolith:$hecMonolithVersion") { transitive = false }
     clientNatives_windows_x64("mil.army.usace.hec:javaHeclib:$clientHeclibVersion-win-x86_64@zip")
     clientNatives_linux_x64  ("mil.army.usace.hec:javaHeclib:$clientHeclibVersion-linux-x86_64@tar.gz")
     clientNatives_macOS_x64  ("mil.army.usace.hec:javaHeclib:$clientHeclibVersion-macOS-x86_64-full@zip")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
-    testImplementation("org.junit.jupiter:junit-jupiter-params:$junitVersion")
     testRuntimeOnly  ("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testRuntimeOnly  ('org.junit.platform:junit-platform-launcher')
 }
 
 // ---------------------------------------------------------------------------
-// Slim hec-monolith jar — only the classes needed for the v6→v7 path
+// Slim hec-monolith jar
 // ---------------------------------------------------------------------------
 
 tasks.register('slimMonolithJar', Jar) {
@@ -125,21 +98,20 @@ tasks.register('slimMonolithJar', Jar) {
     from(configurations.embed
             .filter { it.name.contains('hec-monolith') }
             .collect { zipTree(it) }) {
-        include 'hec/heclib/**'         // DSS, grid, JNI wrapper
-        include 'hec/io/**'             // DataContainer framework
-        include 'hec/lang/**'           // Core language utilities
-        include 'hec/util/**'           // Utility helpers
-        include 'hec/event/**'          // HecDssListener used by heclib
-        include 'hec/hecmath/*'         // DSSFile (parent of HecDss) — top-level only
-        include 'hec/script/Constants*' // Constants interface (HecMath implements it)
-        include 'hec/data/*'            // Top-level data classes only
-        include 'rma/util/**'           // File I/O and math utilities
+        include 'hec/heclib/**'
+        include 'hec/io/**'
+        include 'hec/lang/**'
+        include 'hec/util/**'
+        include 'hec/event/**'
+        include 'hec/hecmath/*'
+        include 'hec/script/Constants*'
+        include 'hec/data/*'
+        include 'rma/util/**'
     }
 }
 
 // ---------------------------------------------------------------------------
-// Embed everything under a uniquely-prefixed resource path so the jar is
-// safe to shade into a host fat jar without collisions.
+// Bundle everything under a unique resource prefix (shade-safe)
 // ---------------------------------------------------------------------------
 
 ext.resourceRoot = 'mil/army/usace/hec/dss/migrator'
@@ -147,28 +119,16 @@ ext.resourceRoot = 'mil/army/usace/hec/dss/migrator'
 processResources {
     dependsOn slimMonolithJar
 
-    from(tasks.slimMonolithJar.archiveFile) {
-        into "$resourceRoot/isolated"
-    }
-    from(configurations.embed.filter { !it.name.contains('hec-monolith') }) {
-        into "$resourceRoot/isolated"
-    }
+    from(tasks.slimMonolithJar.archiveFile) { into "$resourceRoot/isolated" }
+    from(configurations.embed.filter { !it.name.contains('hec-monolith') }) { into "$resourceRoot/isolated" }
 
-    from(configurations.windows_x64.collect { zipTree(it) }) {
-        into "$resourceRoot/native/win-x86_64"
-    }
-    from(configurations.linux_x64.collect { tarTree(it) }) {
-        into "$resourceRoot/native/linux-x86_64"
-    }
-    from(configurations.macOS_x64.collect { zipTree(it) }) {
-        into "$resourceRoot/native/macOS-x86_64"
-    }
+    from(configurations.windows_x64.collect { zipTree(it) })  { into "$resourceRoot/native/win-x86_64"   }
+    from(configurations.linux_x64.collect   { tarTree(it) })  { into "$resourceRoot/native/linux-x86_64" }
+    from(configurations.macOS_x64.collect   { zipTree(it) })  { into "$resourceRoot/native/macOS-x86_64" }
 }
 
 // ---------------------------------------------------------------------------
-// manifest.properties — index of embedded files with SHA-256 hashes.
-// Runtime uses this to know what to extract (a ClassLoader can't enumerate
-// resources) and to detect tampered cache entries.
+// manifest.properties — SHA-256 index of embedded resources
 // ---------------------------------------------------------------------------
 
 tasks.register('generateManifest') {
@@ -185,8 +145,7 @@ tasks.register('generateManifest') {
         def hash = { File f ->
             def md = java.security.MessageDigest.getInstance('SHA-256')
             f.withInputStream { is ->
-                byte[] buf = new byte[16384]
-                int n
+                byte[] buf = new byte[16384]; int n
                 while ((n = is.read(buf)) != -1) md.update(buf, 0, n)
             }
             md.digest().collect { String.format('%02x', it & 0xff) }.join()
@@ -196,9 +155,10 @@ tasks.register('generateManifest') {
             include 'native/**'
             include 'isolated/*.jar'
         }.sort().each { f ->
-            def rel = stagedDir.toPath().relativize(f.toPath())
-                    .toString().replace('\\', '/')
-            props.setProperty(rel, hash(f))
+            props.setProperty(
+                stagedDir.toPath().relativize(f.toPath()).toString().replace('\\', '/'),
+                hash(f)
+            )
         }
 
         manifestFile.parentFile.mkdirs()
@@ -211,21 +171,15 @@ tasks.register('generateManifest') {
 classes.dependsOn generateManifest
 
 // ---------------------------------------------------------------------------
-// Tests need a different javaHeclib version loaded into the outer JVM, so
-// we extract that to build/lib and point java.library.path at it.
+// Tests: extract client-side natives to build/lib
 // ---------------------------------------------------------------------------
 
 tasks.register('getNatives', Sync) {
     def osName = System.properties.'os.name'.split('\\s')[0].toLowerCase()
-    if (osName == 'windows') {
-        from { configurations.clientNatives_windows_x64.collect { zipTree(it) } }
-    } else if (osName == 'linux') {
-        from { configurations.clientNatives_linux_x64.collect { tarTree(it) } }
-    } else if (osName == 'mac') {
-        from { configurations.clientNatives_macOS_x64.collect { zipTree(it) } }
-    } else {
-        throw new GradleException("Unsupported test platform: $osName")
-    }
+    if      (osName == 'windows') from { configurations.clientNatives_windows_x64.collect { zipTree(it) } }
+    else if (osName == 'linux')   from { configurations.clientNatives_linux_x64.collect { tarTree(it) } }
+    else if (osName == 'mac')     from { configurations.clientNatives_macOS_x64.collect { zipTree(it) } }
+    else throw new GradleException("Unsupported test platform: $osName")
     into layout.buildDirectory.dir('lib')
 }
 
@@ -234,12 +188,11 @@ test {
     useJUnitPlatform()
     systemProperty 'java.library.path', layout.buildDirectory.dir('lib').get().asFile.absolutePath
 
-    // Strict / edge-cases profile: `-PstrictEnv=true`
     if (project.hasProperty('strictEnv')) {
-        systemProperty 'file.encoding', 'US-ASCII'
-        systemProperty 'user.language', 'tr'         // dotted-I lowercase trap
-        systemProperty 'user.country',  'TR'
-        systemProperty 'hec.dss.migrator.forceStaging', 'true'
+        systemProperty 'file.encoding',                   'US-ASCII'
+        systemProperty 'user.language',                   'tr'
+        systemProperty 'user.country',                    'TR'
+        systemProperty 'hec.dss.migrator.forceStaging',   'true'
     }
 
     testLogging {
@@ -252,82 +205,8 @@ test {
 jar {
     manifest {
         attributes(
-                'Automatic-Module-Name': 'mil.army.usace.hec.dss.migrator',
-                'Implementation-Version': project.version
+            'Automatic-Module-Name': 'mil.army.usace.hec.dss.migrator',
+            'Implementation-Version': project.version
         )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Publishing — Maven Central via the Central Portal API.
-// Local install: ./gradlew publishToMavenLocal
-// Central publish (CI only): ./gradlew publishAllToNewMavenCentralApi \
-//     -Psign=true -PsigningKey=... -PsigningKeyPassword=... \
-//     -PcentralApiUsername=... -PcentralApiPassword=...
-// ---------------------------------------------------------------------------
-
-publishing {
-    publications {
-        maven(MavenPublication) {
-            artifactId = 'hec-dss-migrator'
-            from components.java
-
-            pom {
-                name          = 'HEC DSS Migrator'
-                description   = project.description
-                url           = 'https://github.com/HydrologicEngineeringCenter/hec-dss-migrator'
-                inceptionYear = '2026'
-
-                licenses {
-                    license {
-                        name = 'CDDL + GPLv2 with Classpath Exception'
-                        url  = 'http://www.netbeans.org/cddl-gplv2.html'
-                    }
-                }
-
-                developers {
-                    developer {
-                        id              = 'hec'
-                        name            = 'Hydrologic Engineering Center'
-                        organization    = 'US Army Corps of Engineers - Hydrologic Engineering Center'
-                        organizationUrl = 'https://www.hec.usace.army.mil/'
-                    }
-                }
-
-                scm {
-                    connection          = 'scm:git:https://github.com/HydrologicEngineeringCenter/hec-dss-migrator.git'
-                    developerConnection = 'git@github.com:HydrologicEngineeringCenter/hec-dss-migrator.git'
-                    url                 = 'https://github.com/HydrologicEngineeringCenter/hec-dss-migrator'
-                }
-
-                issueManagement {
-                    system = 'GitHub'
-                    url    = 'https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/issues'
-                }
-            }
-        }
-    }
-
-    repositories {
-        mavenLocal()
-        maven {
-            name = 'mavenCentralApi'
-            url  = 'https://central.sonatype.com'
-            credentials {
-                username = project.findProperty('centralApiUsername')
-                password = project.findProperty('centralApiPassword')
-            }
-        }
-    }
-}
-
-ext.shouldSign = (project.findProperty('sign') ?: 'false') == 'true'
-
-if (shouldSign) {
-    signing {
-        def signingKey      = project.getProperty('signingKey').trim().replace('\n', '')
-        def signingPassword = project.getProperty('signingKeyPassword')
-        useInMemoryPgpKeys(signingKey, signingPassword)
-        sign publishing.publications
     }
 }
