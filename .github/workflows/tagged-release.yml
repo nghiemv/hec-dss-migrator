@@ -36,7 +36,7 @@ jobs:
         run: ./gradlew jar -PversionOverride=${{ github.ref_name }}
 
       - name: Upload jar artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jar-${{ matrix.classifier }}
           path: build/libs/hec-dss-migrator-*.jar
