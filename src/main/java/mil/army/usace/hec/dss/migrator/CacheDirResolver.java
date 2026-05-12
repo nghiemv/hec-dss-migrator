@@ -115,14 +115,10 @@ final class CacheDirResolver {
     private static Path tmpdirFallback() {
         String tmpdir = System.getProperty("java.io.tmpdir", ".");
         String user = System.getProperty("user.name", "anon");
-        return Path.of(tmpdir, APP_NAME + "-" + sanitize(user));
+        return Path.of(tmpdir, APP_NAME + "-" + MigratorPaths.sanitizeForPath(user));
     }
 
     private static String nonEmpty(String s) {
         return (s == null || s.isEmpty()) ? null : s;
-    }
-
-    private static String sanitize(String s) {
-        return s.replaceAll("[^A-Za-z0-9._-]", "-");
     }
 }

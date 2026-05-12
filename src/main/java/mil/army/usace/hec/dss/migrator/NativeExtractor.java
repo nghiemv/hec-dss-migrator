@@ -46,7 +46,7 @@ final class NativeExtractor {
         Properties manifest = loadManifest();
         String version = manifest.getProperty(MANIFEST_VERSION_KEY, "dev");
         String platform = detectPlatform();
-        Path leaf = cacheRoot.resolve(sanitize(version)).resolve(platform);
+        Path leaf = cacheRoot.resolve(MigratorPaths.sanitizeForPath(version)).resolve(platform);
         Files.createDirectories(leaf);
 
         Map<String, String> expectedNatives = manifestSubset(manifest, NATIVE_PREFIX + platform + "/");
@@ -101,12 +101,10 @@ final class NativeExtractor {
         throw new UnsupportedOperationException("Unsupported platform: os=" + os + " arch=" + arch);
     }
 
-    /** Best-effort sweep of {@code .tmp-*} files older than {@link #STALE_TEMP_CUTOFF_MS}. */
     private static void sweepStaleTempFiles(Path leaf) {
         sweepOlderThan(leaf, name -> name.contains(".tmp-"));
     }
 
-    /** Best-effort sweep of {@code stage_*} files left behind by a crashed prior JVM. */
     private static void sweepStaleStageFiles(Path stagingDir) {
         sweepOlderThan(stagingDir, name -> name.startsWith("stage_"));
     }
@@ -226,10 +224,6 @@ final class NativeExtractor {
                 && !path.toFile().setExecutable(true)) {
             LOGGER.warning("Could not set executable bit on: " + path);
         }
-    }
-
-    private static String sanitize(String version) {
-        return version.replaceAll("[^A-Za-z0-9._-]", "-");
     }
 
     static final class Prepared {

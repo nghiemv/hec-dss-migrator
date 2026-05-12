@@ -59,4 +59,54 @@ final class HecDssHandles {
         stringContainerCtor = scClass.getConstructor();
         stringField = scClass.getField("string");
     }
+
+    /** Op invoked against a managed {@code utilities} handle that is auto-closed afterward. */
+    @FunctionalInterface
+    interface UtilitiesOp<T> {
+        T run(Object utilities) throws Exception;
+    }
+
+    /**
+     * Converts {@code src} to {@code dst} and closes both. The trailing
+     * setName/close on {@code dst} releases the native handle the converter
+     * leaves open, otherwise Windows refuses to move {@code dst} afterward.
+     */
+    int convertAndClose(Object utilities, String src, String dst) throws Exception {
+        setDSSFileName.invoke(utilities, src);
+        int status = (int) convertVersion.invoke(utilities, dst);
+        closeDSSFile.invoke(utilities);
+        setDSSFileName.invoke(utilities, dst);
+        closeDSSFile.invoke(utilities);
+        return status;
+    }
+
+    /** Opens a utilities handle pointed at {@code filename}, reads the DSS version, and closes. */
+    int peekVersion(String filename) throws Exception {
+        Object utilities = utilitiesCtor.newInstance();
+        try {
+            setDSSFileName.invoke(utilities, filename);
+            return (int) getDssFileVersion.invoke(utilities);
+        } finally {
+            closeQuietly(utilities);
+        }
+    }
+
+    /**
+     * Opens a utilities handle pointed at {@code filename}, runs {@code op}, and
+     * closes the handle in a finally block. The op may close the handle itself
+     * (e.g. via {@link #convertAndClose}); the trailing close is swallowed.
+     */
+    <T> T withUtilities(String filename, UtilitiesOp<T> op) throws Exception {
+        Object utilities = utilitiesCtor.newInstance();
+        try {
+            setDSSFileName.invoke(utilities, filename);
+            return op.run(utilities);
+        } finally {
+            closeQuietly(utilities);
+        }
+    }
+
+    private void closeQuietly(Object utilities) {
+        try { closeDSSFile.invoke(utilities); } catch (Exception ignore) {}
+    }
 }

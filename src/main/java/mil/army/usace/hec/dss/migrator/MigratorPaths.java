@@ -120,6 +120,11 @@ final class MigratorPaths {
         return filename.replaceFirst("[.][^.]+$", "");
     }
 
+    /** Replaces filesystem-unfriendly characters in {@code s} with {@code '-'}. */
+    static String sanitizeForPath(String s) {
+        return s.replaceAll("[^A-Za-z0-9._-]", "-");
+    }
+
     /**
      * Builds a sibling path of {@code original} with a {@code .dss} extension
      * and {@code discriminator} appended after the stem (e.g. a unique suffix,

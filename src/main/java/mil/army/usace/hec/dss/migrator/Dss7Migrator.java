@@ -85,24 +85,20 @@ public class Dss7Migrator {
     private MigrationResult doMigrate(Path pathToFile) throws Exception {
         String fileName = pathToFile.toString();
         HecDssHandles h = session.handles;
-        Object utilities = h.utilitiesCtor.newInstance();
-        h.setDSSFileName.invoke(utilities, fileName);
-        int version = (int) h.getDssFileVersion.invoke(utilities);
-
+        int version = h.peekVersion(fileName);
         if (version == 7) {
-            h.closeDSSFile.invoke(utilities);
             return MigrationResult.ALREADY_UP_TO_DATE;
         }
         if (version < 6) {
-            h.closeDSSFile.invoke(utilities);
             LOGGER.warning(() -> "Unsupported DSS version " + version + ": " + fileName);
             return MigrationResult.FAILED;
         }
-
-        int recordCount = (int) h.getNumberRecords.invoke(utilities);
-        return recordCount == 0
-                ? recreateEmptyAsV7(pathToFile, utilities)
-                : convertNonEmptyV6(pathToFile, utilities);
+        return h.withUtilities(fileName, utilities -> {
+            int recordCount = (int) h.getNumberRecords.invoke(utilities);
+            return recordCount == 0
+                    ? recreateEmptyAsV7(pathToFile, utilities)
+                    : convertNonEmptyV6(pathToFile, utilities);
+        });
     }
 
     private MigrationResult recreateEmptyAsV7(Path pathToFile, Object utilities) throws Exception {
@@ -119,11 +115,7 @@ public class Dss7Migrator {
         HecDssHandles h = session.handles;
         Path tempPath = MigratorPaths.siblingTempPath(pathToFile, MigratorPaths.uniqueSuffix());
 
-        int status = (int) h.convertVersion.invoke(utilities, tempPath.toString());
-        h.closeDSSFile.invoke(utilities);
-        // convertVersion leaves the temp file open — close it before move so Windows doesn't lock.
-        h.setDSSFileName.invoke(utilities, tempPath.toString());
-        h.closeDSSFile.invoke(utilities);
+        int status = h.convertAndClose(utilities, pathToFile.toString(), tempPath.toString());
 
         if (status != 0) {
             LOGGER.warning(() -> "Convert failed (" + status + "): " + pathToFile);

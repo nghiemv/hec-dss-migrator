@@ -82,30 +82,22 @@ public class Dss7GridFixer {
 
     private boolean doScan(Path pathToFile) throws Exception {
         HecDssHandles h = session.handles;
-        Object utilities = h.utilitiesCtor.newInstance();
-        h.setDSSFileName.invoke(utilities, pathToFile.toString());
-        int version = (int) h.getDssFileVersion.invoke(utilities);
-        try {
+        return h.withUtilities(pathToFile.toString(), utilities -> {
+            int version = (int) h.getDssFileVersion.invoke(utilities);
             return version == 7 && scanForVersion6Grids(utilities);
-        } finally {
-            h.closeDSSFile.invoke(utilities);
-        }
+        });
     }
 
     private MigrationResult doFix(Path pathToFile) throws Exception {
         HecDssHandles h = session.handles;
-
-        Object probe = h.utilitiesCtor.newInstance();
-        h.setDSSFileName.invoke(probe, pathToFile.toString());
-        int version = (int) h.getDssFileVersion.invoke(probe);
+        String fileName = pathToFile.toString();
+        int version = h.peekVersion(fileName);
         if (version != 7) {
-            h.closeDSSFile.invoke(probe);
             LOGGER.warning(() -> "fixVersion6Grids requires v7 (got v" + version
                     + "): " + pathToFile + " — use Dss7Migrator.migrate() for v6→v7");
             return MigrationResult.FAILED;
         }
-        boolean hasV6Grids = scanForVersion6Grids(probe);
-        h.closeDSSFile.invoke(probe);
+        boolean hasV6Grids = h.withUtilities(fileName, this::scanForVersion6Grids);
         if (!hasV6Grids) {
             return MigrationResult.ALREADY_UP_TO_DATE;
         }
@@ -117,35 +109,26 @@ public class Dss7GridFixer {
         String suffix = MigratorPaths.uniqueSuffix();
         Path v6Temp = MigratorPaths.siblingTempPath(pathToFile, "v6_" + suffix);
         Path v7Temp = MigratorPaths.siblingTempPath(pathToFile, "v7_" + suffix);
-        Object utilities = h.utilitiesCtor.newInstance();
 
-        int s1 = convertAndClose(utilities, pathToFile.toString(), v6Temp.toString());
-        if (s1 != 0) {
-            LOGGER.warning(() -> "v7→v6 failed (" + s1 + "): " + pathToFile);
+        return h.withUtilities(pathToFile.toString(), utilities -> {
+            int s1 = h.convertAndClose(utilities, pathToFile.toString(), v6Temp.toString());
+            if (s1 != 0) {
+                LOGGER.warning(() -> "v7→v6 failed (" + s1 + "): " + pathToFile);
+                MigratorPaths.deleteQuietly(v6Temp);
+                return MigrationResult.FAILED;
+            }
+
+            int s2 = h.convertAndClose(utilities, v6Temp.toString(), v7Temp.toString());
             MigratorPaths.deleteQuietly(v6Temp);
-            return MigrationResult.FAILED;
-        }
+            if (s2 != 0) {
+                LOGGER.warning(() -> "v6→v7 failed (" + s2 + "): " + pathToFile);
+                MigratorPaths.deleteQuietly(v7Temp);
+                return MigrationResult.FAILED;
+            }
 
-        int s2 = convertAndClose(utilities, v6Temp.toString(), v7Temp.toString());
-        MigratorPaths.deleteQuietly(v6Temp);
-        if (s2 != 0) {
-            LOGGER.warning(() -> "v6→v7 failed (" + s2 + "): " + pathToFile);
-            MigratorPaths.deleteQuietly(v7Temp);
-            return MigrationResult.FAILED;
-        }
-
-        Files.move(v7Temp, pathToFile, StandardCopyOption.REPLACE_EXISTING);
-        return MigrationResult.MIGRATED;
-    }
-
-    private int convertAndClose(Object utilities, String src, String dst) throws Exception {
-        HecDssHandles h = session.handles;
-        h.setDSSFileName.invoke(utilities, src);
-        int status = (int) h.convertVersion.invoke(utilities, dst);
-        h.closeDSSFile.invoke(utilities);
-        h.setDSSFileName.invoke(utilities, dst);
-        h.closeDSSFile.invoke(utilities);
-        return status;
+            Files.move(v7Temp, pathToFile, StandardCopyOption.REPLACE_EXISTING);
+            return MigrationResult.MIGRATED;
+        });
     }
 
     private boolean scanForVersion6Grids(Object utilities) throws Exception {
