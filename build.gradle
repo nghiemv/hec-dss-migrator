@@ -39,11 +39,16 @@ configurations.all {
 // ---------------------------------------------------------------------------
 
 ext {
+    // Load-bearing: this is the hec-monolith that still reads DSS v6 records.
+    // Newer versions drop v6 read paths — do not bump.
     hecMonolithVersion = '3.3.28'
+
     hecNucleusVersion  = '4.9.0'
     lookupVersion      = '2.0'
     floggerVersion     = '0.7.4'
 
+    // Load-bearing split: the embedded native is the v7 producer; the client
+    // native is what the host JVM in tests uses. They must stay distinct.
     embeddedHeclibVersion = '7-IU-0'
     clientHeclibVersion   = '7-IU-16'
 
