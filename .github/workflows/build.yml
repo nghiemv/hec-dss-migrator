@@ -25,10 +25,30 @@ jobs:
         jdk:     ['11', '17', '21']
         profile: [standard, edge]
 
+    env:
+      # connectionTimeout/socketTimeout: HEC-Nexus is occasionally
+      # unreachable from public runners; fail fast instead of hanging
+      # for minutes.
+      # auto-detect/auto-download: if a toolchain is ever reintroduced,
+      # error loudly rather than silently using a runner-image JDK of the
+      # wrong architecture (e.g. arm64 JDK 11 on macos-latest, which
+      # cannot load the x86_64 heclib dylib).
+      GRADLE_OPTS: >-
+        -Dorg.gradle.internal.http.connectionTimeout=30000
+        -Dorg.gradle.internal.http.socketTimeout=60000
+        -Dorg.gradle.java.installations.auto-detect=false
+        -Dorg.gradle.java.installations.auto-download=false
+
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      # macos-latest is arm64; the bundled heclib is x86_64. Run the JVM under
+      # Rosetta so x86_64 JNI loads cleanly.
+      - name: Ensure Rosetta 2 (macOS)
+        if: runner.os == 'macOS'
+        run: softwareupdate --install-rosetta --agree-to-license
 
       - uses: actions/setup-java@v5
         with:
@@ -45,6 +65,63 @@ jobs:
       - name: Build (edge — locale/encoding/forced staging)
         if: matrix.profile == 'edge'
         run: ./gradlew build -PstrictEnv=true --no-daemon
+
+      - name: Diagnose native lib (macOS, on failure)
+        if: failure() && runner.os == 'macOS'
+        run: |
+          echo "::group::host arch"
+          uname -m
+          arch -x86_64 uname -m || echo "Rosetta unavailable"
+          echo "::endgroup::"
+          echo "::group::JVM info"
+          java -XshowSettings:properties -version 2>&1 | grep -E 'os\.|sun\.arch' || true
+          echo "::endgroup::"
+          echo "::group::JVM launcher signature"
+          codesign -d --verbose=4 "$JAVA_HOME/bin/java" 2>&1 || true
+          codesign -d --entitlements - "$JAVA_HOME/bin/java" 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::build/lib tree"
+          find build/lib -maxdepth 4 -print 2>/dev/null || true
+          echo "::endgroup::"
+          echo "::group::TryLoad probe (direct JVM System.load)"
+          cat > /tmp/TryLoad.java <<'JAVA'
+          public class TryLoad {
+              public static void main(String[] args) throws Exception {
+                  System.load(args[0]);
+                  System.out.println("loaded ok");
+              }
+          }
+          JAVA
+          "$JAVA_HOME/bin/javac" -d /tmp /tmp/TryLoad.java
+          dylib=$(find build/lib -name 'libjavaHeclib.dylib' | head -1)
+          [ -n "$dylib" ] && "$JAVA_HOME/bin/java" -cp /tmp TryLoad "$(pwd)/$dylib" 2>&1 || true
+          echo "::endgroup::"
+
+          cat > /tmp/dlopen_test.c <<'EOF'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          int main(int argc, char** argv) {
+            void* h = dlopen(argv[1], RTLD_LAZY);
+            if (h == NULL) { fprintf(stderr, "dlerror: %s\n", dlerror()); return 1; }
+            printf("dlopen OK\n"); return 0;
+          }
+          EOF
+          arch -x86_64 cc -o /tmp/dlopen_test /tmp/dlopen_test.c
+
+          probe() {
+            d=$1
+            echo "::group::$d"
+            file "$d"
+            otool -L "$d" || true
+            codesign -dvv "$d" 2>&1 || true
+            echo "--- arch -x86_64 dlopen ---"
+            arch -x86_64 /tmp/dlopen_test "$d" || true
+            echo "::endgroup::"
+          }
+          find build "$HOME/Library/Caches/hec-dss-migrator" /private/var/folders \
+            -name 'libjavaHeclib.dylib' -print 2>/dev/null | while IFS= read -r d; do
+              probe "$d"
+            done
 
       - name: Publish test report
         uses: mikepenz/action-junit-report@v6
