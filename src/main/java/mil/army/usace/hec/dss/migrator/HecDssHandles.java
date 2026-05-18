@@ -70,14 +70,21 @@ final class HecDssHandles {
      * Converts {@code src} to {@code dst} and closes both. The trailing
      * setName/close on {@code dst} releases the native handle the converter
      * leaves open, otherwise Windows refuses to move {@code dst} afterward.
+     * Both closes run even when {@code convertVersion} throws — without that
+     * guard a native exception leaks the {@code dst} handle the converter
+     * already opened and the user can't move/delete the file.
      */
     int convertAndClose(Object utilities, String src, String dst) throws Exception {
         setDSSFileName.invoke(utilities, src);
-        int status = (int) convertVersion.invoke(utilities, dst);
-        closeDSSFile.invoke(utilities);
-        setDSSFileName.invoke(utilities, dst);
-        closeDSSFile.invoke(utilities);
-        return status;
+        try {
+            return (int) convertVersion.invoke(utilities, dst);
+        } finally {
+            try { closeDSSFile.invoke(utilities); } catch (Exception ignore) {}
+            try {
+                setDSSFileName.invoke(utilities, dst);
+                closeDSSFile.invoke(utilities);
+            } catch (Exception ignore) {}
+        }
     }
 
     /** Opens a utilities handle pointed at {@code filename}, reads the DSS version, and closes. */

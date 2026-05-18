@@ -6,13 +6,23 @@ group   = 'mil.army.usace.hec'
 version = project.findProperty('versionOverride') ?: '0.1.0'
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(11)
-    }
     withSourcesJar()
+    withJavadocJar()
+}
+
+javadoc {
+    // The migrator's javadoc is sparse; doclint failures aren't a useful signal
+    // and would block the Maven Central release path.
+    options.addStringOption('Xdoclint:none', '-quiet')
 }
 
 compileJava {
+    // Ensures JDK 11 bytecode compatibility regardless of the building JDK.
+    // We deliberately don't set a toolchain: Gradle's toolchain auto-detection
+    // would pick the runner's pre-installed JDK 11 (which is arm64 on
+    // macos-latest), making the forked test JVM unable to load the x86_64
+    // heclib JNI under Rosetta. Using the building JDK keeps the test JVM
+    // matched to the matrix architecture.
     options.release = 11
 }
 
@@ -39,11 +49,16 @@ configurations.all {
 // ---------------------------------------------------------------------------
 
 ext {
+    // Load-bearing: this is the hec-monolith that still reads DSS v6 records.
+    // Newer versions drop v6 read paths — do not bump.
     hecMonolithVersion = '3.3.28'
+
     hecNucleusVersion  = '4.9.0'
     lookupVersion      = '2.0'
     floggerVersion     = '0.7.4'
 
+    // Load-bearing split: the embedded native is the v7 producer; the client
+    // native is what the host JVM in tests uses. They must stay distinct.
     embeddedHeclibVersion = '7-IU-0'
     clientHeclibVersion   = '7-IU-16'
 
@@ -133,6 +148,20 @@ processResources {
     from(configurations.windows_x64.collect { zipTree(it) })  { into "$resourceRoot/native/win-x86_64"   }
     from(configurations.linux_x64.collect   { tarTree(it) })  { into "$resourceRoot/native/linux-x86_64" }
     from(configurations.macOS_x64.collect   { zipTree(it) })  { into "$resourceRoot/native/macOS-x86_64" }
+
+    // JDK 17+ Temurin on macOS enforces library validation: a Developer-ID
+    // signed dylib won't load into the JVM (different team id). Ad-hoc resign
+    // the bundled macOS dylibs so the extracted copies pass validation.
+    doLast {
+        if (!System.properties.'os.name'.toLowerCase().contains('mac')) return
+        def macDir = file("${destinationDir}/$resourceRoot/native/macOS-x86_64")
+        if (!macDir.exists()) return
+        macDir.eachFileRecurse { f ->
+            if (f.isFile() && f.name.endsWith('.dylib')) {
+                exec { commandLine 'codesign', '--force', '--sign', '-', f.absolutePath }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +218,34 @@ tasks.register('getNatives', Sync) {
     else if (osName == 'mac')     from { configurations.clientNatives_macOS_x64.collect { zipTree(it) } }
     else throw new GradleException("Unsupported test platform: $osName")
     into layout.buildDirectory.dir('lib')
+    // The macOS "-full" zip wraps libjavaHeclib.dylib (and libgfortran) in a
+    // javaHeclib/ subdir; flatten so System.loadLibrary picks them up from
+    // java.library.path and @rpath/@loader_path resolves transitive deps.
+    eachFile { it.relativePath = new RelativePath(true, it.name) }
+    includeEmptyDirs = false
+
+    // libjavaHeclib references @rpath/libgfortran.dylib (unversioned) but the
+    // bundled file is libgfortran.5.dylib. Create symlinks so dyld resolves
+    // the transitive deps. Also ad-hoc resign so JDK 17+ library validation
+    // accepts the libs (Developer-ID signed dylibs are rejected by the
+    // Adoptium-signed JVM under hardened runtime).
+    doLast {
+        if (osName != 'mac') return
+        def libDir = layout.buildDirectory.dir('lib').get().asFile
+        libDir.listFiles({ f -> f.name ==~ /lib[^.]+\.\d.*\.dylib/ } as FileFilter).each { versioned ->
+            def base = (versioned.name =~ /^(lib[^.]+)\..*\.dylib$/)[0][1]
+            def link = new File(libDir, "${base}.dylib")
+            if (!link.exists()) {
+                java.nio.file.Files.createSymbolicLink(link.toPath(),
+                        java.nio.file.Paths.get(versioned.name))
+            }
+        }
+        libDir.eachFile { f ->
+            if (f.isFile() && f.name.endsWith('.dylib')) {
+                exec { commandLine 'codesign', '--force', '--sign', '-', f.absolutePath }
+            }
+        }
+    }
 }
 
 test {

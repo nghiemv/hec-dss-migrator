@@ -1,13 +1,8 @@
 version: 2
 updates:
-  - package-ecosystem: gradle
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-
+  # Gradle deps are intentionally pinned for v1 (see build.gradle). Security
+  # alerts still fire independently of this file; we just don't want noisy
+  # version-update PRs.
   - package-ecosystem: github-actions
     directory: /
     schedule:

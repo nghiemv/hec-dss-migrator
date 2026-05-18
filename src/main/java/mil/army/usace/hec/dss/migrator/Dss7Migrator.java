@@ -1,8 +1,7 @@
 package mil.army.usace.hec.dss.migrator;
 
-import java.nio.file.Files;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.logging.Logger;
 
 /**
@@ -104,14 +103,14 @@ public class Dss7Migrator {
     private MigrationResult recreateEmptyAsV7(Path pathToFile, Object utilities) throws Exception {
         HecDssHandles h = session.handles;
         h.closeDSSFile.invoke(utilities);
-        Files.delete(pathToFile);
-        Object manager = h.managerCtor.newInstance(pathToFile.toString());
+        Path tempPath = MigratorPaths.siblingTempPath(pathToFile, MigratorPaths.uniqueSuffix());
+        Object manager = h.managerCtor.newInstance(tempPath.toString());
         try {
             h.managerOpen.invoke(manager);
         } finally {
             try { h.managerClose.invoke(manager); } catch (Exception ignore) {}
         }
-        return MigrationResult.MIGRATED;
+        return moveBackOrPreserve(tempPath, pathToFile);
     }
 
     private MigrationResult convertNonEmptyV6(Path pathToFile, Object utilities) throws Exception {
@@ -125,9 +124,18 @@ public class Dss7Migrator {
             MigratorPaths.deleteQuietly(tempPath);
             return MigrationResult.FAILED;
         }
-        // Single atomic step — never leaves the user with no file at the original path.
-        Files.move(tempPath, pathToFile, StandardCopyOption.REPLACE_EXISTING);
-        return MigrationResult.MIGRATED;
+        return moveBackOrPreserve(tempPath, pathToFile);
+    }
+
+    private static MigrationResult moveBackOrPreserve(Path tempPath, Path pathToFile) {
+        try {
+            MigratorPaths.atomicMoveOrReplace(tempPath, pathToFile);
+            return MigrationResult.MIGRATED;
+        } catch (IOException e) {
+            throw new DssMigrationException(
+                    "Migration succeeded but move-back failed for: " + pathToFile
+                            + " — staged result preserved at: " + tempPath, e);
+        }
     }
 
     IsolatedClassLoader isolatedClassLoader() {

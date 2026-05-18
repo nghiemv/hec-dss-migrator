@@ -54,13 +54,20 @@ final class IsolatedRuntime {
         }
     }
 
-    /** Runs {@code op} with the context CL set to the session's isolated CL. */
+    /**
+     * Runs {@code op} with the context CL set to the session's isolated CL.
+     * {@link DssMigrationException} propagates — it carries recovery-required
+     * state (e.g. a preserved staged file path) that must not be collapsed
+     * into {@code errorValue}. All other exceptions are logged and translated.
+     */
     static <T> T run(Session session, Op<T> op, T errorValue, Logger logger, String contextMsg) {
         Thread t = Thread.currentThread();
         ClassLoader original = t.getContextClassLoader();
         try {
             t.setContextClassLoader(session.classLoader);
             return op.run();
+        } catch (DssMigrationException e) {
+            throw e;
         } catch (Exception e) {
             logger.log(Level.SEVERE, contextMsg, e);
             return errorValue;

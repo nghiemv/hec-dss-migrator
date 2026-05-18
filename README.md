@@ -1,7 +1,5 @@
 # hec-dss-migrator
 
-[![Build](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/actions/workflows/build.yml/badge.svg)](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/actions/workflows/build.yml)
-
 Self-contained Java library for migrating HEC-DSS files from version 6 to version 7,
 designed to work inside a host JVM that may already have a different `javaHeclib` version
 loaded.
@@ -12,8 +10,8 @@ never touched.
 
 ## Installation
 
-Download the jar from [Releases](https://github.com/HydrologicEngineeringCenter/hec-dss-migrator/releases)
-and add it to your classpath, or declare a local file dependency:
+Download the jar from [Releases](../../releases) and add it to your classpath,
+or declare a local file dependency:
 
 ```gradle
 dependencies {
