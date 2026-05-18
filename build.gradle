@@ -7,6 +7,13 @@ version = project.findProperty('versionOverride') ?: '0.1.0'
 
 java {
     withSourcesJar()
+    withJavadocJar()
+}
+
+javadoc {
+    // The migrator's javadoc is sparse; doclint failures aren't a useful signal
+    // and would block the Maven Central release path.
+    options.addStringOption('Xdoclint:none', '-quiet')
 }
 
 compileJava {
