@@ -1,0 +1,237 @@
+plugins {
+    id 'java-library'
+}
+
+group   = 'mil.army.usace.hec'
+version = '0.1.1'
+
+compileJava {
+    // JDK 11 bytecode. No toolchain: auto-detection would pick the runner's
+    // pre-installed arm64 JDK 11 on macos-latest, breaking the x86_64 heclib
+    // JNI load under Rosetta.
+    options.release = 11
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'hecPublic'
+        url  = 'https://www.hec.usace.army.mil/nexus/repository/maven-public'
+        content {
+            includeGroup 'mil.army.usace.hec'
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dep versions
+// ---------------------------------------------------------------------------
+
+ext {
+    // Load-bearing: this is the hec-monolith that still reads DSS v6 records.
+    // Newer versions drop v6 read paths — do not bump.
+    hecMonolithVersion = '3.3.28'
+
+    hecNucleusVersion  = '4.9.0'
+    lookupVersion      = '2.0'
+    floggerVersion     = '0.7.4'
+
+    // Load-bearing split: the embedded native is the v7 producer; the client
+    // native is what the host JVM in tests uses. They must stay distinct.
+    embeddedHeclibVersion = '7-IU-0'
+    clientHeclibVersion   = '7-IU-16'
+
+    junitVersion         = '5.9.3'
+    junitPlatformVersion = '1.9.3'
+}
+
+// ---------------------------------------------------------------------------
+// Custom configurations
+// ---------------------------------------------------------------------------
+
+configurations {
+    embed {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive    = false
+    }
+
+    windows_x64 { canBeConsumed = false; canBeResolved = true }
+    linux_x64   { canBeConsumed = false; canBeResolved = true }
+    macOS_x64   { canBeConsumed = false; canBeResolved = true }
+
+    clientNatives_windows_x64 { canBeConsumed = false; canBeResolved = true }
+    clientNatives_linux_x64   { canBeConsumed = false; canBeResolved = true }
+    clientNatives_macOS_x64   { canBeConsumed = false; canBeResolved = true }
+}
+
+dependencies {
+    embed("mil.army.usace.hec:hec-monolith:$hecMonolithVersion")
+    embed("com.google.flogger:flogger:$floggerVersion")
+    embed("com.google.flogger:flogger-system-backend:$floggerVersion")
+    embed("mil.army.usace.hec:hec-nucleus-metadata:$hecNucleusVersion")
+    embed("mil.army.usace.hec:hec-nucleus-data:$hecNucleusVersion")
+    embed("mil.army.usace.hec:lookup:$lookupVersion")
+
+    windows_x64("mil.army.usace.hec:javaHeclib:$embeddedHeclibVersion-win-x86_64@zip")
+    linux_x64  ("mil.army.usace.hec:javaHeclib:$embeddedHeclibVersion-linux-x86_64@tar.gz")
+    macOS_x64  ("mil.army.usace.hec:javaHeclib:$embeddedHeclibVersion-macOS-x86_64-full@zip")
+
+    testImplementation("mil.army.usace.hec:hec-monolith:$hecMonolithVersion") { transitive = false }
+    clientNatives_windows_x64("mil.army.usace.hec:javaHeclib:$clientHeclibVersion-win-x86_64@zip")
+    clientNatives_linux_x64  ("mil.army.usace.hec:javaHeclib:$clientHeclibVersion-linux-x86_64@tar.gz")
+    clientNatives_macOS_x64  ("mil.army.usace.hec:javaHeclib:$clientHeclibVersion-macOS-x86_64-full@zip")
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
+    testRuntimeOnly  ("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
+    testRuntimeOnly  ("org.junit.platform:junit-platform-launcher:$junitPlatformVersion")
+}
+
+// ---------------------------------------------------------------------------
+// Slim hec-monolith jar
+// ---------------------------------------------------------------------------
+
+tasks.register('slimMonolithJar', Jar) {
+    dependsOn configurations.embed
+    archiveBaseName  = 'hec-monolith-slim'
+    archiveVersion   = ''
+    destinationDirectory = layout.buildDirectory.dir('slim')
+
+    from(configurations.embed
+            .filter { it.name.contains('hec-monolith') }
+            .collect { zipTree(it) }) {
+        include 'hec/heclib/**'
+        include 'hec/io/**'
+        include 'hec/lang/**'
+        include 'hec/util/**'
+        include 'hec/event/**'
+        include 'hec/hecmath/*'
+        include 'hec/script/Constants*'
+        include 'hec/data/*'
+        include 'rma/util/**'
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bundle everything under a unique resource prefix (shade-safe)
+// ---------------------------------------------------------------------------
+
+ext.resourceRoot = 'mil/army/usace/hec/dss/migrator'
+
+processResources {
+    dependsOn slimMonolithJar
+
+    from(tasks.slimMonolithJar.archiveFile) { into "$resourceRoot/isolated" }
+    from(configurations.embed.filter { !it.name.contains('hec-monolith') }) { into "$resourceRoot/isolated" }
+
+    from(configurations.windows_x64.collect { zipTree(it) })  { into "$resourceRoot/native/win-x86_64"   }
+    from(configurations.linux_x64.collect   { tarTree(it) })  { into "$resourceRoot/native/linux-x86_64" }
+    from(configurations.macOS_x64.collect   { zipTree(it) })  { into "$resourceRoot/native/macOS-x86_64" }
+}
+
+// ---------------------------------------------------------------------------
+// manifest.properties — SHA-256 index of embedded resources
+// ---------------------------------------------------------------------------
+
+tasks.register('generateManifest') {
+    dependsOn processResources
+    def stagedDir    = file("${processResources.destinationDir}/$resourceRoot")
+    def manifestFile = file("${processResources.destinationDir}/$resourceRoot/manifest.properties")
+    inputs.dir stagedDir
+    outputs.file manifestFile
+
+    doLast {
+        def props = new Properties()
+        props.setProperty('version', project.version.toString())
+
+        def hash = { File f ->
+            def md = java.security.MessageDigest.getInstance('SHA-256')
+            f.withInputStream { is ->
+                byte[] buf = new byte[16384]; int n
+                while ((n = is.read(buf)) != -1) md.update(buf, 0, n)
+            }
+            md.digest().collect { String.format('%02x', it & 0xff) }.join()
+        }
+
+        fileTree(stagedDir).matching {
+            include 'native/**'
+            include 'isolated/*.jar'
+        }.sort().each { f ->
+            props.setProperty(
+                stagedDir.toPath().relativize(f.toPath()).toString().replace('\\', '/'),
+                hash(f)
+            )
+        }
+
+        manifestFile.parentFile.mkdirs()
+        manifestFile.withOutputStream { out ->
+            props.store(out, 'hec-dss-migrator manifest (generated — do not edit)')
+        }
+    }
+}
+
+classes.dependsOn generateManifest
+
+// ---------------------------------------------------------------------------
+// Tests: extract client-side natives to build/lib
+// ---------------------------------------------------------------------------
+
+tasks.register('getNatives', Sync) {
+    def osName = System.properties.'os.name'.split('\\s')[0].toLowerCase()
+    if      (osName == 'windows') from { configurations.clientNatives_windows_x64.collect { zipTree(it) } }
+    else if (osName == 'linux')   from { configurations.clientNatives_linux_x64.collect { tarTree(it) } }
+    else if (osName == 'mac')     from { configurations.clientNatives_macOS_x64.collect { zipTree(it) } }
+    else throw new GradleException("Unsupported test platform: $osName")
+    into layout.buildDirectory.dir('lib')
+    // The macOS "-full" zip wraps libjavaHeclib.dylib (and libgfortran) in a
+    // javaHeclib/ subdir; flatten so System.loadLibrary picks them up from
+    // java.library.path and @rpath/@loader_path resolves transitive deps.
+    eachFile { it.relativePath = new RelativePath(true, it.name) }
+    includeEmptyDirs = false
+
+    // libjavaHeclib references @rpath/libgfortran.dylib (unversioned) but the
+    // bundled file is libgfortran.5.dylib. Symlink so dyld resolves the
+    // transitive deps via @loader_path.
+    doLast {
+        if (osName != 'mac') return
+        def libDir = layout.buildDirectory.dir('lib').get().asFile
+        libDir.listFiles({ f -> f.name ==~ /lib[^.]+\.\d.*\.dylib/ } as FileFilter).each { versioned ->
+            def base = (versioned.name =~ /^(lib[^.]+)\..*\.dylib$/)[0][1]
+            def link = new File(libDir, "${base}.dylib")
+            if (!link.exists()) {
+                java.nio.file.Files.createSymbolicLink(link.toPath(),
+                        java.nio.file.Paths.get(versioned.name))
+            }
+        }
+    }
+}
+
+test {
+    dependsOn getNatives
+    useJUnitPlatform()
+    systemProperty 'java.library.path', layout.buildDirectory.dir('lib').get().asFile.absolutePath
+
+    if (project.hasProperty('strictEnv')) {
+        systemProperty 'file.encoding',                   'US-ASCII'
+        systemProperty 'user.language',                   'tr'
+        systemProperty 'user.country',                    'TR'
+        systemProperty 'hec.dss.migrator.forceStaging',   'true'
+    }
+
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat = 'full'
+        showStackTraces = true
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+            'Automatic-Module-Name': 'mil.army.usace.hec.dss.migrator',
+            'Implementation-Title':  'hec-dss-migrator',
+            'Implementation-Vendor': 'Hydrologic Engineering Center',
+            'Implementation-Version': project.version
+        )
+    }
+}

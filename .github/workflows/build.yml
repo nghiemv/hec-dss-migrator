@@ -1,0 +1,75 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / JDK ${{ matrix.jdk }} / ${{ matrix.profile }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # JDK 11 is the bytecode target; one run per OS covers the JNI side.
+          - {os: ubuntu-latest,  jdk: '11', profile: standard}
+          - {os: windows-latest, jdk: '11', profile: standard}
+          - {os: macos-latest,   jdk: '11', profile: standard}
+          # Edge profile exercises locale (Turkish), encoding (US-ASCII), and
+          # the forced-staging code path. These are platform-independent; one
+          # combination catches the same bugs as nine.
+          - {os: ubuntu-latest,  jdk: '17', profile: edge}
+
+    env:
+      # connectionTimeout/socketTimeout: HEC-Nexus is occasionally
+      # unreachable from public runners; fail fast instead of hanging
+      # for minutes.
+      # auto-detect/auto-download: if a toolchain is ever reintroduced,
+      # error loudly rather than silently using a runner-image JDK of the
+      # wrong architecture (e.g. arm64 JDK 11 on macos-latest, which
+      # cannot load the x86_64 heclib dylib).
+      GRADLE_OPTS: >-
+        -Dorg.gradle.internal.http.connectionTimeout=30000
+        -Dorg.gradle.internal.http.socketTimeout=60000
+        -Dorg.gradle.java.installations.auto-detect=false
+        -Dorg.gradle.java.installations.auto-download=false
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # macos-latest is arm64; the bundled heclib is x86_64. Run the JVM under
+      # Rosetta so x86_64 JNI loads cleanly.
+      - name: Ensure Rosetta 2 (macOS)
+        if: runner.os == 'macOS'
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+          architecture: x64
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Build
+        if: matrix.profile == 'standard'
+        run: ./gradlew build --no-daemon
+
+      - name: Build (edge — locale/encoding/forced staging)
+        if: matrix.profile == 'edge'
+        run: ./gradlew build -PstrictEnv=true --no-daemon
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}-jdk${{ matrix.jdk }}-${{ matrix.profile }}
+          path: build/reports/tests/
+          if-no-files-found: ignore
