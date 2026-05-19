@@ -41,7 +41,7 @@ configurations.all {
 ext {
     hecMonolithVersion = '3.3.28'
     hecNucleusVersion  = '4.9.0'
-    lookupVersion      = '2.0'
+    lookupVersion      = '3.0.0'
     floggerVersion     = '0.7.4'
 
     embeddedHeclibVersion = '7-IU-0'
