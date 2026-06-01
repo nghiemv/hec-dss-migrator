@@ -34,7 +34,7 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.jdk }}
 
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
         with:
           dependency-graph: generate-and-submit
 
@@ -73,5 +73,5 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew compileJava compileTestJava --no-daemon
