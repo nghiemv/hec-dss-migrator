@@ -48,7 +48,7 @@ ext {
     clientHeclibVersion   = '7-IU-16'
 
     junitVersion         = '5.9.3'
-    junitPlatformVersion = '1.9.3'
+    junitPlatformVersion = '6.1.0'
 }
 
 // ---------------------------------------------------------------------------
